@@ -65,7 +65,6 @@ Each swimmer record contains:
 - **Gender**: M/F
 - **Age**: Integer (calculated as of Dec 31)
 - **Lane**: String/Integer (swimming lane assignment)
-- **Preferred Strokes**: List of strokes they prefer
 - **Excluded Strokes**: List of strokes they cannot swim
 - **Morning Available**: Boolean (Yes/No)
 - **Afternoon Available**: Boolean (Yes/No)
