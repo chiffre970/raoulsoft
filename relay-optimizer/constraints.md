@@ -5,6 +5,7 @@
 ### 1. Team Composition
 - Exactly 4 swimmers per relay team
 - No swimmer can appear in multiple teams for the same event
+- Only one team per age group per event can score points. This means that you can field a team in the 120-159 and a team in the 160-199 if you want, and both can score points, but two teams in the same age group can't.
 
 ### 2. Gender Requirements
 - Men's events: All 4 swimmers must be male
@@ -69,3 +70,17 @@ Points are awarded based on placement:
 - 10th place and after: 2 points
 
 Note: Only the highest placed team per age group per event scores points for the club.
+
+Adjustments: age groups away from the middle get a slight boost, because the competition is usually less deep
+
+This is what our entries looked like last year, and you can take this as roughly representative of all clubs.
+
+Age Group       Teams
+72 - 119        1
+120-169         10
+160-199         14
+200-239         15
+240-279         10
+280-319         0
+320-359         0
+360-399         0
