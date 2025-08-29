@@ -1,0 +1,4 @@
+1. remove event number and event name from event add - this is auto configured based on settings - ie first event to be added is event number 1, and name is generated based on what the event
+2. there are numerous people with more than 6 swims
+3. it's showing expected points instead of -sd per event, also want to see total -sd
+4. should be able to scroll in main window, and should have max 3 events per column, rather than jsut scrolling down infinitely

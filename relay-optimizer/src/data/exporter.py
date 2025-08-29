@@ -1,13 +1,14 @@
 import pandas as pd
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-from reportlab.platypus.para import Paragraph
 from typing import List
 from datetime import datetime
 from ..models import Event, OptimizationResult
+from .pdf_utils import setup_fonts
 
 def export_to_excel(result: OptimizationResult, events: List[Event], filename: str):
     """Export optimization results to Excel file with multiple sheets."""
@@ -15,9 +16,10 @@ def export_to_excel(result: OptimizationResult, events: List[Event], filename: s
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
         # Sheet 1: Summary
         summary_data = {
-            'Metric': ['Total Expected Points', 'Events with Teams', 'Events Skipped', 'Unique Swimmers'],
+            'Metric': ['Total Z-Score (SD)', 'Average Z-Score per Event', 'Events with Teams', 'Events Skipped', 'Unique Swimmers'],
             'Value': [
-                result.total_expected_points,
+                f"{result.total_z_score:+.2f}",
+                f"{result.total_z_score/len(result.assignments) if result.assignments else 0:+.2f}",
                 len(result.assignments),
                 len(result.events_skipped),
                 len(result.swimmer_event_counts)
@@ -44,7 +46,7 @@ def export_to_excel(result: OptimizationResult, events: List[Event], filename: s
                     'Age': swimmer.age,
                     'Time': swimmer.get_time(stroke, event.distance),
                     'Team Time': assignment.expected_time if i == 0 else '',
-                    'Expected Points': assignment.expected_points if i == 0 else ''
+                    'Z-Score (SD)': f"{assignment.z_score:+.2f}" if i == 0 else ''
                 })
         
         if assignments_data:
@@ -94,20 +96,40 @@ def export_to_excel(result: OptimizationResult, events: List[Event], filename: s
 def export_to_pdf(result: OptimizationResult, events: List[Event], filename: str):
     """Export optimization results to PDF file."""
     
+    # Setup fonts for macOS compatibility
+    setup_fonts()
+    
     doc = SimpleDocTemplate(filename, pagesize=landscape(letter))
     story = []
     styles = getSampleStyleSheet()
     
+    # Create custom styles without specifying font names
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        fontSize=16,
+        textColor=colors.HexColor('#000000'),
+        alignment=TA_CENTER
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading1'],
+        fontSize=14,
+        textColor=colors.HexColor('#000000')
+    )
+    
     # Title
-    title = Paragraph("Relay Team Optimization Results", styles['Title'])
+    title = Paragraph("Relay Team Optimization Results", title_style)
     story.append(title)
     story.append(Spacer(1, 0.3*inch))
     
     # Summary
-    summary = Paragraph(f"<b>Total Expected Points:</b> {result.total_expected_points:.0f}<br/>"
-                       f"<b>Events with Teams:</b> {len(result.assignments)}<br/>"
-                       f"<b>Events Skipped:</b> {len(result.events_skipped)}<br/>"
-                       f"<b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+    summary = Paragraph(f"Total Z-Score: {result.total_z_score:+.2f} SD<br/>"
+                       f"Average Z-Score per Event: {result.total_z_score/len(result.assignments) if result.assignments else 0:+.2f} SD<br/>"
+                       f"Events with Teams: {len(result.assignments)}<br/>"
+                       f"Events Skipped: {len(result.events_skipped)}<br/>"
+                       f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
                        styles['Normal'])
     story.append(summary)
     story.append(Spacer(1, 0.3*inch))
@@ -118,11 +140,11 @@ def export_to_pdf(result: OptimizationResult, events: List[Event], filename: str
         team = assignment.team
         
         # Event header
-        event_header = Paragraph(f"<b>Event {event.event_number}: {event.event_name}</b><br/>"
+        event_header = Paragraph(f"Event {event.event_number}: {event.event_name}<br/>"
                                f"Session: {event.session.value} | "
                                f"Age Group: {assignment.age_group[0]}-{assignment.age_group[1]} | "
-                               f"Expected Points: {assignment.expected_points:.0f}",
-                               styles['Heading2'])
+                               f"Z-Score: {assignment.z_score:+.2f} SD",
+                               heading_style)
         story.append(event_header)
         story.append(Spacer(1, 0.1*inch))
         
@@ -150,12 +172,10 @@ def export_to_pdf(result: OptimizationResult, events: List[Event], filename: str
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ]))
         
         story.append(table)
@@ -163,7 +183,7 @@ def export_to_pdf(result: OptimizationResult, events: List[Event], filename: str
     
     # Swimmer Usage (new page)
     story.append(PageBreak())
-    story.append(Paragraph("Swimmer Usage Summary", styles['Heading1']))
+    story.append(Paragraph("Swimmer Usage Summary", heading_style))
     story.append(Spacer(1, 0.2*inch))
     
     usage_data = [['Swimmer', 'Events Assigned', 'Events Remaining']]
@@ -175,7 +195,6 @@ def export_to_pdf(result: OptimizationResult, events: List[Event], filename: str
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 12),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
@@ -187,7 +206,7 @@ def export_to_pdf(result: OptimizationResult, events: List[Event], filename: str
     # Skipped Events
     if result.events_skipped:
         story.append(Spacer(1, 0.3*inch))
-        story.append(Paragraph("Skipped Events", styles['Heading2']))
+        story.append(Paragraph("Skipped Events", heading_style))
         story.append(Spacer(1, 0.1*inch))
         
         for skip in result.events_skipped:

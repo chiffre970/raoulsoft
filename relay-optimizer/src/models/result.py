@@ -5,7 +5,8 @@ from .team import TeamAssignment
 @dataclass
 class OptimizationResult:
     assignments: List[TeamAssignment] = field(default_factory=list)
-    total_expected_points: float = 0.0
+    total_expected_points: float = 0.0  # Deprecated
+    total_z_score: float = 0.0  # Total standard deviations across all events
     events_skipped: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     swimmer_event_counts: Dict[str, int] = field(default_factory=dict)
@@ -13,6 +14,7 @@ class OptimizationResult:
     def add_assignment(self, assignment: TeamAssignment):
         self.assignments.append(assignment)
         self.total_expected_points += assignment.expected_points
+        self.total_z_score += assignment.z_score
         
         for swimmer in assignment.team.swimmers:
             key = swimmer.name

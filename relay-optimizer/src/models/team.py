@@ -93,4 +93,5 @@ class TeamAssignment:
     team: Team
     age_group: Tuple[int, int]
     expected_time: float
-    expected_points: float = 0.0
+    expected_points: float = 0.0  # Deprecated - use z_score
+    z_score: float = 0.0  # Standard deviations from mean (positive = faster than average)

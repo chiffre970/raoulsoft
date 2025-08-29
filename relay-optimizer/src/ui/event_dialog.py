@@ -10,8 +10,16 @@ class EventDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Add Event" if not event else "Edit Event")
-        self.dialog.geometry("450x400")
+        self.dialog.geometry("450x450")  # Made taller to ensure buttons are visible
         self.dialog.resizable(False, False)
+        
+        # Center the dialog on screen
+        self.dialog.update_idletasks()
+        width = self.dialog.winfo_width()
+        height = self.dialog.winfo_height()
+        x = (self.dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (height // 2)
+        self.dialog.geometry(f"{width}x{height}+{x}+{y}")
         
         # Make modal
         self.dialog.transient(parent)

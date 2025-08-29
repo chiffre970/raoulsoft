@@ -7,6 +7,7 @@ from ..models import Swimmer, Event, Team, TeamAssignment, OptimizationResult
 from ..optimization.optimizer import RelayOptimizer
 from .swimmer_dialog import SwimmerDialog
 from .event_dialog import EventDialog
+from .progress_dialog import ProgressDialog
 
 class MainWindow:
     def __init__(self, root):
@@ -36,7 +37,7 @@ class MainWindow:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Import Swimmers (CSV)", command=self.import_swimmers)
+        file_menu.add_command(label="Import Swimmers (CSV/Excel)", command=self.import_swimmers)
         file_menu.add_command(label="Import Events (CSV)", command=self.import_events)
         file_menu.add_separator()
         file_menu.add_command(label="Export to Excel", command=self.export_excel)
@@ -63,15 +64,10 @@ class MainWindow:
         
         ttk.Button(toolbar, text="Add Swimmer", command=self.add_swimmer).pack(side=tk.LEFT, padx=5)
         ttk.Button(toolbar, text="Add Event", command=self.add_event).pack(side=tk.LEFT, padx=5)
+        ttk.Button(toolbar, text="Clear All", command=self.clear_all).pack(side=tk.LEFT, padx=5)
         ttk.Button(toolbar, text="Optimize", command=self.run_optimizer).pack(side=tk.LEFT, padx=5)
         ttk.Button(toolbar, text="Export Excel", command=self.export_excel).pack(side=tk.LEFT, padx=5)
         ttk.Button(toolbar, text="Export PDF", command=self.export_pdf).pack(side=tk.LEFT, padx=5)
-        
-        # Status bar
-        self.status_var = tk.StringVar()
-        self.status_var.set("Ready")
-        status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         
         # Main content area with tabs
         notebook = ttk.Notebook(self.root)
@@ -112,20 +108,23 @@ class MainWindow:
         scrollbar.pack(side="right", fill="y")
     
     def create_swimmers_view(self, parent):
-        # Create treeview for swimmers
-        columns = ('Name', 'Age', 'Gender', 'Max Events', 'Assigned', 'AM', 'PM')
-        self.swimmers_tree = ttk.Treeview(parent, columns=columns, show='tree headings')
+        # Create treeview for swimmers with time columns
+        columns = ('Name', 'Age', 'Gender', 'AM', 'PM', 
+                  '50 Free', '50 Back', '50 Breast', '50 Fly',
+                  '100 Free', '100 Back', '100 Breast', '100 Fly', 
+                  '200 Free')
+        self.swimmers_tree = ttk.Treeview(parent, columns=columns, show='headings')  # Changed to just 'headings' to hide tree column
         
-        # Define headings
-        self.swimmers_tree.heading('#0', text='ID')
-        self.swimmers_tree.column('#0', width=50)
+        # No ID column needed
         
         for col in columns:
             self.swimmers_tree.heading(col, text=col)
             if col == 'Name':
                 self.swimmers_tree.column(col, width=200)
-            else:
-                self.swimmers_tree.column(col, width=100)
+            elif col in ['Age', 'Gender', 'AM', 'PM']:
+                self.swimmers_tree.column(col, width=60)
+            else:  # Time columns
+                self.swimmers_tree.column(col, width=80)
         
         # Add scrollbar
         scrollbar = ttk.Scrollbar(parent, orient='vertical', command=self.swimmers_tree.yview)
@@ -166,16 +165,37 @@ class MainWindow:
         
         # Add swimmers
         for swimmer in self.swimmers:
+            # Helper to format time
+            def format_time(stroke, distance):
+                time = swimmer.get_time(stroke, distance)
+                if time:
+                    # Format as MM:SS.HH or SS.HH
+                    if time >= 60:
+                        mins = int(time // 60)
+                        secs = time % 60
+                        return f"{mins}:{secs:05.2f}"
+                    else:
+                        return f"{time:.2f}"
+                return ''
+            
             values = (
                 swimmer.name,
                 swimmer.age,
                 swimmer.gender.value,
-                swimmer.max_events,
-                swimmer.events_assigned,
                 '✓' if swimmer.morning_available else '',
-                '✓' if swimmer.afternoon_available else ''
+                '✓' if swimmer.afternoon_available else '',
+                format_time('Free', 50),
+                format_time('Back', 50),
+                format_time('Breast', 50),
+                format_time('Fly', 50),
+                format_time('Free', 100),
+                format_time('Back', 100),
+                format_time('Breast', 100),
+                format_time('Fly', 100),
+                format_time('Free', 200)
             )
-            self.swimmers_tree.insert('', 'end', text=str(swimmer.swimmer_id or ''), values=values)
+            # Store swimmer_id as tag for internal reference, not as visible text
+            item_id = self.swimmers_tree.insert('', 'end', values=values, tags=(swimmer.swimmer_id,))
     
     def refresh_events_list(self):
         # Clear existing widgets
@@ -209,7 +229,7 @@ class MainWindow:
             info_label = ttk.Label(team_frame, 
                                  text=f"Age Group: {assignment.age_group[0]}-{assignment.age_group[1]} | "
                                       f"Total Time: {self.format_time(assignment.expected_time)} | "
-                                      f"Expected Points: {assignment.expected_points:.0f}")
+                                      f"Z-Score: {assignment.z_score:+.2f} SD")
             info_label.pack(pady=5)
             
             # Swimmers table
@@ -262,9 +282,10 @@ class MainWindow:
     def edit_swimmer(self, event):
         selection = self.swimmers_tree.selection()
         if selection:
-            # Get swimmer ID from tree
+            # Get swimmer ID from tags
             item = self.swimmers_tree.item(selection[0])
-            swimmer_id = int(item['text']) if item['text'] else None
+            tags = item.get('tags', [])
+            swimmer_id = tags[0] if tags else None
             
             # Find swimmer
             swimmer = next((s for s in self.swimmers if s.swimmer_id == swimmer_id), None)
@@ -285,7 +306,8 @@ class MainWindow:
         if selection:
             if messagebox.askyesno("Delete Swimmer", "Are you sure you want to delete this swimmer?"):
                 item = self.swimmers_tree.item(selection[0])
-                swimmer_id = int(item['text']) if item['text'] else None
+                tags = item.get('tags', [])
+                swimmer_id = tags[0] if tags else None
                 if swimmer_id:
                     self.db.delete_swimmer(swimmer_id)
                     self.load_data()
@@ -299,26 +321,45 @@ class MainWindow:
             messagebox.showwarning("No Events", "Please add events before optimizing.")
             return
         
-        # Run optimization in background thread
-        self.status_var.set("Running optimization...")
+        # Show progress dialog
+        progress_dialog = ProgressDialog(self.root, "Running Optimization")
         
+        # Run optimization in background thread
         def optimize():
             # Reset event assignments
             for swimmer in self.swimmers:
                 swimmer.events_assigned = 0
             
+            # Create optimizer
             optimizer = RelayOptimizer(self.swimmers, self.events)
-            result = optimizer.optimize(lambda msg: self.root.after(0, self.status_var.set, msg))
+            
+            # Progress callback to update dialog with throttling
+            import time
+            last_update = [0]  # Use list to allow modification in nested function
+            
+            def progress(msg):
+                # Throttle updates to every 100ms to prevent recursion
+                current_time = time.time()
+                if current_time - last_update[0] >= 0.1:  # 100ms minimum between updates
+                    last_update[0] = current_time
+                    self.root.after(0, lambda: progress_dialog.update_status(msg))
+            
+            result = optimizer.optimize(progress_callback=progress)
             
             # Update UI in main thread
-            self.root.after(0, self.optimization_complete, result)
+            self.root.after(0, lambda: self.optimization_complete_with_dialog(result, progress_dialog))
         
         thread = threading.Thread(target=optimize)
+        thread.daemon = True  # Make thread daemon so it closes with main program
         thread.start()
+    
+    def optimization_complete_with_dialog(self, result: OptimizationResult, progress_dialog):
+        """Complete optimization and close progress dialog"""
+        progress_dialog.close()
+        self.optimization_complete(result)
     
     def optimization_complete(self, result: OptimizationResult):
         self.current_result = result
-        self.status_var.set(f"Optimization complete. Total expected points: {result.total_expected_points:.0f}")
         
         # Show warnings if any
         if result.warnings:
@@ -327,6 +368,11 @@ class MainWindow:
         
         self.refresh_display()
         self.display_results()
+        
+        # Show completion message
+        messagebox.showinfo("Optimization Complete", 
+                          f"Total Z-Score: {result.total_z_score:+.2f} SD\n"
+                          f"Events assigned: {len(result.assignments)}")
     
     def display_results(self):
         if not self.current_result:
@@ -336,7 +382,8 @@ class MainWindow:
         
         # Summary
         self.results_text.insert(tk.END, "=== OPTIMIZATION RESULTS ===\n\n")
-        self.results_text.insert(tk.END, f"Total Expected Points: {self.current_result.total_expected_points:.0f}\n")
+        self.results_text.insert(tk.END, f"Total Z-Score: {self.current_result.total_z_score:+.2f} SD\n")
+        self.results_text.insert(tk.END, f"Average Z-Score per Event: {self.current_result.total_z_score/len(self.current_result.assignments) if self.current_result.assignments else 0:+.2f} SD\n")
         self.results_text.insert(tk.END, f"Events with Teams: {len(self.current_result.assignments)}\n")
         self.results_text.insert(tk.END, f"Events Skipped: {len(self.current_result.events_skipped)}\n\n")
         
@@ -373,19 +420,33 @@ class MainWindow:
         for swimmer in self.swimmers:
             swimmer.events_assigned = 0
         self.refresh_display()
-        self.status_var.set("Teams cleared")
+    
+    def clear_all(self):
+        if messagebox.askyesno("Clear All", "Delete all swimmers and events from the database?"):
+            cursor = self.db.conn.cursor()
+            cursor.execute('DELETE FROM swimmers')
+            cursor.execute('DELETE FROM events')
+            # Reset the autoincrement counters
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name='swimmers'")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name='events'")
+            self.db.conn.commit()
+            self.load_data()
+            self.current_result = None
     
     def reset_database(self):
         if messagebox.askyesno("Reset Database", "This will delete all swimmers and events. Continue?"):
             self.db.clear_all_data()
             self.load_data()
             self.current_result = None
-            self.status_var.set("Database reset")
     
     def import_swimmers(self):
         filename = filedialog.askopenfilename(
-            title="Import Swimmers CSV",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            title="Import Swimmers from CSV or Excel",
+            filetypes=[
+                ("Excel files", "*.xlsx *.xls"),
+                ("CSV files", "*.csv"),
+                ("All files", "*.*")
+            ]
         )
         if filename:
             try:
